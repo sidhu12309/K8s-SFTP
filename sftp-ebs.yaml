@@ -1,0 +1,116 @@
+# =========================
+# 1. Secret (User Credentials)
+# =========================
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sftp-users
+type: Opaque
+stringData:
+  admin: Admin@123
+  user1: User@123
+---
+# =========================
+# 2. Persistent Volume Claim (50GB)
+# =========================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sftp-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+---
+# =========================
+# 3. SFTP Deployment
+# =========================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sftp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sftp
+  template:
+    metadata:
+      labels:
+        app: sftp
+    spec:
+
+      # Init container for directory & permission control
+      initContainers:
+      - name: init-permissions
+        image: busybox
+        command:
+          - sh
+          - -c
+          - |
+            mkdir -p /data/admin /data/user1
+
+            # Admin user (UID 1001)
+            chown -R 1001:1001 /data/admin
+            chmod 770 /data/admin
+
+            # Normal user (UID 1002) - no delete
+            chown -R 1002:1002 /data/user1
+            chmod 750 /data/user1
+        volumeMounts:
+          - name: sftp-data
+            mountPath: /data
+
+      containers:
+      - name: sftp
+        image: atmoz/sftp:latest
+        ports:
+          - containerPort: 22
+
+        env:
+          - name: SFTP_USERS
+            value: "admin:1001,user1:1002"
+
+        command:
+          - sh
+          - -c
+          - |
+            adduser -D -u 1001 admin
+            echo "admin:$(cat /run/secrets/admin)" | chpasswd
+
+            adduser -D -u 1002 user1
+            echo "user1:$(cat /run/secrets/user1)" | chpasswd
+
+            /usr/sbin/sshd -D
+
+        volumeMounts:
+          - name: sftp-data
+            mountPath: /home
+          - name: sftp-secrets
+            mountPath: /run/secrets
+            readOnly: true
+
+      volumes:
+        - name: sftp-data
+          persistentVolumeClaim:
+            claimName: sftp-pvc
+        - name: sftp-secrets
+          secret:
+            secretName: sftp-users
+---
+# =========================
+# 4. Service (Expose SFTP)
+# =========================
+apiVersion: v1
+kind: Service
+metadata:
+  name: sftp-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: sftp
+  ports:
+    - port: 22
+      targetPort: 22
