@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: file-server
+spec:
+  replicas: 1   # MUST be 1 with EBS
+  selector:
+    matchLabels:
+      app: file-server
+  template:
+    metadata:
+      labels:
+        app: file-server
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+      - name: sftpgo
+        image: drakkan/sftpgo:latest
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: data
+          mountPath: /srv/sftpgo
+        env:
+        - name: SFTPGO_HTTPD__BINDINGS__0__PORT
+          value: "8080"
+        - name: SFTPGO_DATA_PROVIDER__DRIVER
+          value: "local"
+        - name: SFTPGO_DATA_PROVIDER__LOCAL__BASE_PATH
+          value: "/srv/sftpgo"
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: file-server-pvc
