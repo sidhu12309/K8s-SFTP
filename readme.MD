@@ -1,3 +1,6 @@
+soorces git file used for eks
+https://github.com/nodematiclabs/file-server-on-k8s
+
 
 Below is a **minimal, clean Helm chart** for your **StatefulSet + EBS + HTTPS (ALB) file server on EKS**.
 
